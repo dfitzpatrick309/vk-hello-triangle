@@ -75,19 +75,18 @@ class HelloTriangleApplication {
 			mainLoop();
 			cleanup();
 		}
-
-	private:	
-		GLFWwindow* window;	
-		VkInstance instance;	
+	private:
+		GLFWwindow* window;
+		VkInstance instance;
 		VkDebugUtilsMessengerEXT debugMessenger;
 		VkSurfaceKHR surface;
 
 		VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
-		VkDevice device;
-		
+		VkDevice device;	
+
 		VkQueue graphicsQueue;
-		VkQueue presentQueue;		
-		
+		VkQueue presentQueue;
+
 		VkSwapchainKHR swapChain;
 		std::vector<VkImage> swapChainImages;
 		VkFormat swapChainImageFormat;
@@ -96,7 +95,7 @@ class HelloTriangleApplication {
 		std::vector<VkFramebuffer> swapChainFramebuffers;
 
 		VkRenderPass renderPass;
-		VkPipelineLayout pipelineLayout;
+		VkPipelineLayout pipelinelayout;
 		VkPipeline graphicsPipeline;
 
 		VkCommandPool commandPool;
@@ -106,35 +105,44 @@ class HelloTriangleApplication {
 		std::vector<VkSemaphore> renderFinishedSemaphores;
 		std::vector<VkFence> inFlightFences;
 		std::vector<VkFence> imagesInFlight;
+
 		size_t currentFrame = 0;
 
+		bool framebufferResized = false;
+
 		void initWindow() {
-			glfwInit(); 		
+			glfwInit();
 
 			glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-			glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
 			window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
+			glfwSetWindowUserPointer(window, this);
+			glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
+		}
+		
+		static void framebufferResizeCallback(GLFWwindow* window, int width, int height) {
+			auto app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
+			app->framebufferResized = true;
 		}
 
 		void initVulkan() {
-			createInstance();	
-			setupDebugMessenger();	
+			createInstance();
+			setupDebugMessenger();
 			createSurface();
 			pickPhysicalDevice();
-		     	createLogicalDevice();
+			createLogicalDevice();
 			createSwapChain();
-			createImageViews();	
+			createImageViews();
 			createRenderPass();
 			createGraphicsPipeline();
 			createFramebuffers();
-			createCommandPool();	
-			createCommandBuffers();	
-			createSyncObjects();	
-		}		
-		
-		void mainLoop() {
-			while (!glfwWindowShouldClose(window)) 	{
+			createCommandPool();
+			createCommandBuffers();
+			createSyncObjects();
+		}
+
+		void mainLoop()  {
+			while (!glfwWindowShouldClose(window)) {
 				glfwPollEvents();
 				drawFrame();
 			}
@@ -142,28 +150,35 @@ class HelloTriangleApplication {
 			vkDeviceWaitIdle(device);
 		}
 
-		void cleanup() {	
+
+		void cleanupSwapChain() {
+			for(size_t i = 0; i < swapChainFramebuffers.size(); i++) {
+				vkDestroyFramebuffer(device, swapChainFramebuffers[i], nullptr);
+			}
+
+			vkFreeCommandBuffers(device, commandPool, static_cast<uint32_t>(commandBuffers.size()), commandBuffers.data());
+
+			vkDestroyPipeline(device, graphicsPipeline, nullptr);
+			vkDestroyPipelineLayout(device, pipelinelayout, nullptr);
+			vkDestroyRenderPass(device, renderPass, nullptr);
+
+			for(size_t i = 0; i < swapChainImageViews.size(); i++) {
+				vkDestroyImageView(device, swapChainImageViews[i], nullptr);
+			}
+			
+			vkDestroySwapchainKHR(device, swapChain, nullptr);
+		}
+
+		void cleanup() {
+			cleanupSwapChain();
+
 			for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
 				vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
 				vkDestroySemaphore(device, imageAvailableSemaphores[i], nullptr);
 				vkDestroyFence(device, inFlightFences[i], nullptr);
 			}
 
-			vkDestroyCommandPool(device, commandPool, nullptr);
-
-			for (auto framebuffer : swapChainFramebuffers) {
-				vkDestroyFramebuffer(device, framebuffer, nullptr);
-			}
-
-			vkDestroyPipeline(device, graphicsPipeline, nullptr);
-			vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
-			vkDestroyRenderPass(device, renderPass, nullptr);
-
-			for(auto imageView : swapChainImageViews) {
-				vkDestroyImageView(device, imageView, nullptr);						  
-			}
-			
-			vkDestroySwapchainKHR(device, swapChain, nullptr);
+			vkDestroyCommandPool(device, commandPool, nullptr);	
 			vkDestroyDevice(device, nullptr);
 
 			if (enableValidationLayers) {
@@ -176,6 +191,29 @@ class HelloTriangleApplication {
 			glfwDestroyWindow(window);
 		
 			glfwTerminate(); 
+		}
+
+
+		void recreateSwapChain() {
+			int width = 0, height = 0;
+			glfwGetFramebufferSize(window, &width, &height);
+			while (width == 0 || height == 0); {
+				glfwGetFramebufferSize(window, &width, &height);
+				glfwWaitEvents();
+			}
+
+			vkDeviceWaitIdle(device);
+			
+			cleanupSwapChain();
+
+			createSwapChain();
+			createImageViews();
+			createRenderPass();
+			createGraphicsPipeline();
+			createFramebuffers();
+			createCommandBuffers();
+
+			imagesInFlight.resize(swapChainImages.size(), VK_NULL_HANDLE);
 		}
 
 		void createInstance() {
@@ -512,7 +550,7 @@ class HelloTriangleApplication {
 			pipelineLayoutInfo.setLayoutCount = 0;
 			pipelineLayoutInfo.pushConstantRangeCount = 0;
 
-			if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
+			if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelinelayout) != VK_SUCCESS) {
 				throw std::runtime_error("failed to create pipeline layout!");
 			}
 				
@@ -528,7 +566,7 @@ class HelloTriangleApplication {
 			pipelineInfo.pDepthStencilState = nullptr;
 			pipelineInfo.pColorBlendState = &colorBlending;
 			pipelineInfo.pDynamicState = nullptr;
-			pipelineInfo.layout = pipelineLayout;
+			pipelineInfo.layout = pipelinelayout;
 			pipelineInfo.renderPass = renderPass;
 			pipelineInfo.subpass = 0;
 			pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
@@ -695,6 +733,8 @@ class HelloTriangleApplication {
 
 			currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 		}
+		
+
 
 		VkShaderModule createShaderModule(const std::vector<char>& code) {
 			VkShaderModuleCreateInfo createInfo{};
